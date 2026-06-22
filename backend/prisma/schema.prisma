@@ -1,0 +1,173 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.UniqueIdentifier
+  email        String   @unique @db.NVarChar(255)
+  passwordHash String   @db.NVarChar(255)
+  firstName    String   @db.NVarChar(100)
+  lastName     String   @db.NVarChar(100)
+  role         String   @db.NVarChar(20)
+  isExpelled   Boolean  @default(false)
+  isNew        Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  taughtSubjects Subject[]       @relation("TeacherSubjects")
+  groups         StudentGroup[]
+  grades         Grade[]
+  submissions    LabSubmission[]
+  teamMembers    LabTeamMember[]
+}
+
+model Group {
+  id   String @id @default(uuid()) @db.UniqueIdentifier
+  name String @unique @db.NVarChar(100)
+
+  students      StudentGroup[]
+  subjectGroups SubjectGroup[]
+  schedule      Schedule[]
+  lessonDays    LessonDay[]
+
+  @@map("StudyGroups")
+}
+
+model StudentGroup {
+  studentId String @db.UniqueIdentifier
+  groupId   String @db.UniqueIdentifier
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  group     Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([studentId, groupId])
+  @@map("StudentGroups")
+}
+
+model Subject {
+  id        String @id @default(uuid()) @db.UniqueIdentifier
+  name      String @db.NVarChar(200)
+  teacherId String @db.UniqueIdentifier
+  teacher   User   @relation("TeacherSubjects", fields: [teacherId], references: [id], onUpdate: NoAction)
+
+  groups      SubjectGroup[]
+  schedule    Schedule[]
+  lessonDays  LessonDay[]
+  courseItems CourseItem[]
+  timings     LessonTiming[]
+}
+
+model SubjectGroup {
+  subjectId String @db.UniqueIdentifier
+  groupId   String @db.UniqueIdentifier
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  group     Group   @relation(fields: [groupId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+
+  @@id([subjectId, groupId])
+  @@map("SubjectGroups")
+}
+
+model Schedule {
+  id        String @id @default(uuid()) @db.UniqueIdentifier
+  subjectId String @db.UniqueIdentifier
+  groupId   String @db.UniqueIdentifier
+  dayOfWeek Int
+  startTime String @db.NVarChar(10)
+  endTime   String @db.NVarChar(10)
+  room      String @default("") @db.NVarChar(50)
+
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  group   Group   @relation(fields: [groupId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+}
+
+model LessonTiming {
+  id               String  @id @default(uuid()) @db.UniqueIdentifier
+  subjectId        String  @unique @db.UniqueIdentifier
+  lessonStart      String  @db.NVarChar(10)
+  lessonEnd        String  @db.NVarChar(10)
+  lateAfterMinutes Int     @default(15)
+  subject          Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+}
+
+model LessonDay {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  subjectId String   @db.UniqueIdentifier
+  groupId   String   @db.UniqueIdentifier
+  date      DateTime
+  topic     String   @default("") @db.NVarChar(500)
+
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  group   Group   @relation(fields: [groupId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  grades  Grade[]
+
+  @@unique([subjectId, groupId, date])
+}
+
+model Grade {
+  id          String   @id @default(uuid()) @db.UniqueIdentifier
+  lessonDayId String   @db.UniqueIdentifier
+  studentId   String   @db.UniqueIdentifier
+  type        String   @default("GRADE") @db.NVarChar(20)
+  value       Int?
+  markedAt    DateTime @default(now())
+
+  lessonDay LessonDay @relation(fields: [lessonDayId], references: [id], onDelete: Cascade)
+  student   User      @relation(fields: [studentId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+
+  @@unique([lessonDayId, studentId, type])
+}
+
+model CourseItem {
+  id          String    @id @default(uuid()) @db.UniqueIdentifier
+  subjectId   String    @db.UniqueIdentifier
+  type        String    @db.NVarChar(20)
+  title       String    @db.NVarChar(300)
+  description String    @default("") @db.NVarChar(Max)
+  deadline    DateTime?
+  issuedAt    DateTime  @default(now())
+  orderIndex  Int       @default(0)
+  taskFile    String?   @db.NVarChar(500)
+  maxScore    Int       @default(5)
+  isTeamWork  Boolean   @default(false)
+
+  subject     Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  submissions LabSubmission[]
+  teams       LabTeam[]
+}
+
+model LabTeam {
+  id           String @id @default(uuid()) @db.UniqueIdentifier
+  courseItemId String @db.UniqueIdentifier
+  name         String @default("") @db.NVarChar(100)
+
+  courseItem CourseItem      @relation(fields: [courseItemId], references: [id], onDelete: Cascade)
+  members    LabTeamMember[]
+}
+
+model LabTeamMember {
+  teamId    String @db.UniqueIdentifier
+  studentId String @db.UniqueIdentifier
+  team      LabTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  student   User    @relation(fields: [studentId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+
+  @@id([teamId, studentId])
+}
+
+model LabSubmission {
+  id             String    @id @default(uuid()) @db.UniqueIdentifier
+  courseItemId   String    @db.UniqueIdentifier
+  studentId      String    @db.UniqueIdentifier
+  filePath       String?   @db.NVarChar(500)
+  submittedAt    DateTime?
+  grade          Int?
+  teacherComment String    @default("") @db.NVarChar(Max)
+  status         String    @default("PENDING") @db.NVarChar(20)
+
+  courseItem CourseItem @relation(fields: [courseItemId], references: [id], onDelete: Cascade)
+  student    User       @relation(fields: [studentId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+
+  @@unique([courseItemId, studentId])
+}
